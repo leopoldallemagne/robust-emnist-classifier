@@ -9,6 +9,7 @@ from torchvision import datasets, transforms
 
 # dropout=0.5 | weight_decay = 1e-4 | batch_size=64 | ln=1e-3 | 28x28 -> [ 32x (14x14) -> 64x (7x7) ] -> 512 -> 256 -> 47 :  88.5%  3
 # dropout=0.5 | weight_decay = 1e-4 | batch_size=64 | ln=1e-3 | 28x28 -> [ 32x (14x14) -> 64x (7x7) ] (+BatchNorm) -> 512 -> 256 -> 47 :  88.4%
+# dropout=0.5 | weight_decay = 1e-4 | batch_size=64 | ln=1e-3 and divided by 2 each 5 Epochs | 28x28 -> [ 32x (14x14) -> 64x (7x7) ] (+BatchNorm) -> 512 -> 256 -> 47 :  88.6%
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using {device} device")
@@ -28,8 +29,9 @@ training_data = datasets.EMNIST(
     train=True,
     download=True,
     transform=transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.5,), (0.5,))
+        transforms.RandomRotation(10), # Turns the image by at most 10 degrees
+        transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)), # Slightly decays the immage
+        transforms.ToTensor()
     ])
 )
 
@@ -39,8 +41,7 @@ test_data = datasets.EMNIST(
     train=False,
     download=True,
     transform=transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.5,), (0.5,))
+        transforms.ToTensor()
     ])
 )
 
@@ -50,8 +51,7 @@ test_dataloader = DataLoader(test_data, batch_size=batch_size)
 # -------------------------
 # CNN MODEL
 # -------------------------
-
-class CNN(nn.Module):
+class ClassifierS4Group02(nn.Module):
     def __init__(self):
         super().__init__()
 
@@ -81,15 +81,20 @@ class CNN(nn.Module):
             nn.Linear(256, 47),
         )
 
-    def forward(self, x):
+    def forward_logits(self, x):
         x = self.conv_stack(x)
-        x = self.classifier(x)
-        return x
+        return self.classifier(x)
+    
+    def forward(self, x):
+        logits = self.forward_logits(x)
+        return nn.functional.softmax(logits, dim=1)
 
-model = CNN().to(device)
+model = ClassifierS4Group02().to(device)
 
 loss_fn = nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.5)
 
 # -------------------------
 # TRAIN LOOP
@@ -101,10 +106,11 @@ def train_loop(dataloader, model, loss_fn, optimizer):
 
     for batch, (X, y) in enumerate(dataloader):
         X, y = X.to(device), y.to(device)
-
-        pred = model(X)
-        loss = loss_fn(pred, y)
-
+        
+        pred_logits = model.forward_logits(X)
+        
+        loss = loss_fn(pred_logits, y)
+        
         loss.backward()
         optimizer.step()
         optimizer.zero_grad()
@@ -121,9 +127,11 @@ def test_loop(dataloader, model, loss_fn):
     with torch.no_grad():
         for X, y in dataloader:
             X, y = X.to(device), y.to(device)
-            pred = model(X)
-            test_loss += loss_fn(pred, y).item()
-            correct += (pred.argmax(1) == y).type(torch.float).sum().item()
+            pred_logits = model.forward_logits(X)
+            test_loss += loss_fn(pred_logits, y).item()
+
+            pred_probs = model(X)
+            correct += (pred_probs.argmax(1) == y).type(torch.float).sum().item()
 
     test_loss /= num_batches
     correct /= size
@@ -136,6 +144,8 @@ for t in range(epochs):
     print(f"Epoch {t+1}\n-------------------------------")
     train_loop(train_dataloader, model, loss_fn, optimizer)
     test_loop(test_dataloader, model, loss_fn)
+    
+    scheduler.step()
 
 print("Done!")
 
