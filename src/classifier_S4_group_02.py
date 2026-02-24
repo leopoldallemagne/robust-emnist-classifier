@@ -152,6 +152,32 @@ for t in range(epochs):
 
 print("Done!")
 
+#  Passer en mode évaluation et sur CPU pour l'export
+
+model.eval()
+
 model.to('cpu')
-torch.save(model, oracle_file)
-print(f"Fichier Oracle généré : {oracle_file}")
+
+
+
+
+
+example_input = torch.rand(1, 1, 28, 28)
+
+
+
+
+
+traced_script_module = torch.jit.trace(model, example_input)
+
+
+
+
+
+oracle_file = "classifier_S4_group_02.pt"
+
+traced_script_module.save(oracle_file)
+
+
+
+print(f"✅ Véritable Oracle généré : {oracle_file}")
