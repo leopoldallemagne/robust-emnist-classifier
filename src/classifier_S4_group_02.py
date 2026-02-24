@@ -96,7 +96,7 @@ model = ClassifierS4Group02().to(device)
 loss_fn = nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
 
-scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.5)
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=3)
 
 # -------------------------
 # TRAIN LOOP
@@ -139,15 +139,16 @@ def test_loop(dataloader, model, loss_fn):
     correct /= size
 
     print(f"Accuracy: {(100*correct):>0.1f}% | Avg loss: {test_loss:>8f}\n")
+    return test_loss
 
 
 
 for t in range(epochs):
     print(f"Epoch {t+1}\n-------------------------------")
     train_loop(train_dataloader, model, loss_fn, optimizer)
-    test_loop(test_dataloader, model, loss_fn)
+    val_loss = test_loop(test_dataloader, model, loss_fn)
     
-    scheduler.step()
+    scheduler.step(val_loss)
 
 print("Done!")
 
