@@ -23,16 +23,20 @@ dropout=0.5
 weight_file="weight.pth"
 oracle_file="oracle5.pt"
 
+class FixEMNIST:
+    def __call__(self, img):
+        img = transforms.ToTensor()(img)
+        img = torch.flip(img, [2])            # flip horizontal
+        img = torch.rot90(img, 1, [1, 2])    # rotate 90° pour mettre debout
+        return img
+
+
 training_data = datasets.EMNIST(
     root="data",
     split="balanced",
     train=True,
     download=True,
-    transform=transforms.Compose([
-        transforms.RandomRotation(10), # Turns the image by at most 10 degrees
-        transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)), # Slightly decays the immage
-        transforms.ToTensor()
-    ])
+    transform=FixEMNIST()
 )
 
 test_data = datasets.EMNIST(
@@ -40,9 +44,7 @@ test_data = datasets.EMNIST(
     split="balanced",
     train=False,
     download=True,
-    transform=transforms.Compose([
-        transforms.ToTensor()
-    ])
+    transform=FixEMNIST()
 )
 
 train_dataloader = DataLoader(training_data, batch_size=batch_size, shuffle=True)
