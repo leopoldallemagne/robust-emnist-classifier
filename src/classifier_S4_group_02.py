@@ -22,6 +22,14 @@ dropout=0.5
 
 oracle_file="classifier_S4_group_02.pt"
 
+class FixEMNIST:
+    def __call__(self, img):
+        img = transforms.ToTensor()(img)
+        img = torch.flip(img, [2])            # flip horizontal
+        img = torch.rot90(img, 1, [1, 2])    # rotate 90° pour mettre debout
+        return img
+
+
 training_data = datasets.EMNIST(
     root="data",
     split="balanced",
@@ -171,6 +179,13 @@ def test_loop(dataloader, model, loss_fn):
     print(f"Accuracy: {(100*correct):>0.1f}% | Avg loss: {test_loss:>8f}\n")
     return test_loss
 
+if __name__ == "__main__":
+    for t in range(epochs):
+        print(f"Epoch {t+1}\n-------------------------------")
+        train_loop(train_dataloader, model, loss_fn, optimizer)
+        val_loss =test_loop(test_dataloader, model, loss_fn)
+        
+        scheduler.step(val_loss)
 
 if __name__ == "__main__":
     for t in range(epochs):
