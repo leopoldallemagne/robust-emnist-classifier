@@ -3,25 +3,24 @@ from torch import nn
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 
-# dropout=0.5 | weight_decay = 1e-4 | batch_size=64 | ln=1e-3 | 28x28 -> [ 32x (14x14) -> 64x (7x7) ] -> 128 -> 47 :  88.1%
-# dropout=0.5 | weight_decay = 1e-4 | batch_size=64 | ln=1e-4 | 28x28 -> [ 32x (14x14) -> 64x (7x7) ] -> 128 -> 47 :  86.9%  1
-# dropout=0.2 | weight_decay = 1e-4 | batch_size=64 | ln=1e-3 | 28x28 -> [ 32x (14x14) -> 64x (7x7) ] -> 128 -> 47 :  88.1%  2
+class FixEMNIST:
+    def __call__(self, img):
+        img = transforms.ToTensor()(img)
+        img = torch.flip(img, [2])            # flip horizontal
+        img = torch.rot90(img, 1, [1, 2])    # rotate 90° pour mettre debout
+        return img
 
-# dropout=0.5 | weight_decay = 1e-4 | batch_size=64 | ln=1e-3 | 28x28 -> [ 32x (14x14) -> 64x (7x7) ] -> 512 -> 256 -> 47 :  88.5%  3
-# dropout=0.5 | weight_decay = 1e-4 | batch_size=64 | ln=1e-3 | 28x28 -> [ 32x (14x14) -> 64x (7x7) ] (+BatchNorm) -> 512 -> 256 -> 47 :  88.4%
-# dropout=0.5 | weight_decay = 1e-4 | batch_size=64 | ln=1e-3 and divided by 2 each 5 Epochs | 28x28 -> [ 32x (14x14) -> 64x (7x7) ] (+BatchNorm) -> 512 -> 256 -> 47 :  88.6%
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using {device} device")
 
 learning_rate = 1e-3
-batch_size = 64
-epochs = 15
+batch_size = 32
+epochs = 30
 weight_decay = 1e-4
 dropout=0.5
 
-weight_file="weight.pth"
-oracle_file="oracle5.pt"
+oracle_file="classifier_S4_group_02.pt"
 
 class FixEMNIST:
     def __call__(self, img):
@@ -54,6 +53,18 @@ test_dataloader = DataLoader(test_data, batch_size=batch_size)
 # CNN MODEL
 # -------------------------
 class ClassifierS4Group02(nn.Module):
+    """
+    Modèle de classification d'images.
+
+    Contrainte: Le classifieur génère un vecteur de probabilités en moins de 0.1 seconde pour une image, sur un ordinateur 
+                personnel de base (équipé par exemple d’un processeur CPU de type Core i5 et de 8 Go de mémoire RAM).
+
+    Export: Après avoir entrainé le modèle, utilisez le code suivant afin de le sauver comme un oracle:
+
+            model = ClassifierS4GroupXX()
+            m = torch.jit.script(model)
+            m.save("classifier_S4_group_XX.pt")
+    """
     def __init__(self):
         super().__init__()
 
@@ -88,10 +99,33 @@ class ClassifierS4Group02(nn.Module):
         return self.classifier(x)
     
     def forward(self, x):
+        """
+        Inférence du réseau de neurones.
+
+        Entrée: Une image x enregistrée comme un tensor.FloatTensor d'une des dimensions suivantes:
+                    - (28, 28)
+                    - (B, 28, 28)
+                    - (B, 1, 28, 28)
+                et dont les entrées sont comprises entre 0 et 1.
+
+        Sortie: Un vecteur y enregistré comme un tensor.FloatTensor de dimension
+                    - (47,) si B = 1
+                    - (B, 47) si B > 1
+                avec les probabilités de classification associées à chaque classe.
+
+        Contrainte: y doit satisfaire à la définition de probabilités.
+        """
+
         logits = self.forward_logits(x)
         return nn.functional.softmax(logits, dim=1)
 
+@torch.no_grad()
+def init_weights(m):
+    if type(m) is nn.Linear:
+        nn.init.kaiming_uniform_(tensor=m.weight, mode='fan_in', nonlinearity='relu')
+
 model = ClassifierS4Group02().to(device)
+model.apply(init_weights)
 
 loss_fn = nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
@@ -120,6 +154,10 @@ def train_loop(dataloader, model, loss_fn, optimizer):
         if batch % 200 == 0:
             print(f"loss: {loss.item():>7f} [{batch * len(X):>5d}/{size:>5d}]")
 
+# -------------------------
+# TEST LOOP
+# -------------------------
+
 def test_loop(dataloader, model, loss_fn):
     model.eval()
     size = len(dataloader.dataset)
@@ -140,6 +178,14 @@ def test_loop(dataloader, model, loss_fn):
 
     print(f"Accuracy: {(100*correct):>0.1f}% | Avg loss: {test_loss:>8f}\n")
     return test_loss
+
+if __name__ == "__main__":
+    for t in range(epochs):
+        print(f"Epoch {t+1}\n-------------------------------")
+        train_loop(train_dataloader, model, loss_fn, optimizer)
+        val_loss =test_loop(test_dataloader, model, loss_fn)
+        
+        scheduler.step(val_loss)
 
 if __name__ == "__main__":
     for t in range(epochs):
