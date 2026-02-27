@@ -187,14 +187,6 @@ if __name__ == "__main__":
         
         scheduler.step(val_loss)
 
-if __name__ == "__main__":
-    for t in range(epochs):
-        print(f"Epoch {t+1}\n-------------------------------")
-        train_loop(train_dataloader, model, loss_fn, optimizer)
-        val_loss =test_loop(test_dataloader, model, loss_fn)
-        
-        scheduler.step(val_loss)
-
     print("Done!")
 
     m = torch.jit.script(model)
