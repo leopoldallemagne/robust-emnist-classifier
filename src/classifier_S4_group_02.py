@@ -141,43 +141,16 @@ def test_loop(dataloader, model, loss_fn):
     print(f"Accuracy: {(100*correct):>0.1f}% | Avg loss: {test_loss:>8f}\n")
     return test_loss
 
+if __name__ == "__main__":
+    for t in range(epochs):
+        print(f"Epoch {t+1}\n-------------------------------")
+        train_loop(train_dataloader, model, loss_fn, optimizer)
+        val_loss =test_loop(test_dataloader, model, loss_fn)
+        
+        scheduler.step(val_loss)
 
+    print("Done!")
 
-for t in range(epochs):
-    print(f"Epoch {t+1}\n-------------------------------")
-    train_loop(train_dataloader, model, loss_fn, optimizer)
-    val_loss = test_loop(test_dataloader, model, loss_fn)
-    
-    scheduler.step(val_loss)
-
-print("Done!")
-
-#  Passer en mode évaluation et sur CPU pour l'export
-
-model.eval()
-
-model.to('cpu')
-
-
-
-
-
-example_input = torch.rand(1, 1, 28, 28)
-
-
-
-
-
-traced_script_module = torch.jit.trace(model, example_input)
-
-
-
-
-
-oracle_file = "classifier_S4_group_02.pt"
-
-traced_script_module.save(oracle_file)
-
-
-
-print(f"✅ Véritable Oracle généré : {oracle_file}")
+    m = torch.jit.script(model)
+    m.save("classifier_S4_group_02.pt")
+    print(f"Fichier Oracle généré : {oracle_file}")
