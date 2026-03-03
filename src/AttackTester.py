@@ -40,12 +40,12 @@ def pgd_attack(model, image, label, epsilon=0.15, alpha=0.03, iters=5, device="c
 # ============================================================
 # MAIN TEST FUNCTION
 # ============================================================
-
 def TestAttackerOnModels(
         oracle_files,
         sample_size=15,
         plot_samples=False,
         eps_plot=1.0,
+        epsilons=[0.5, 1.0, 1.5],
         attacker_name="attacker",
         dir="./attack_results"):
 
@@ -74,9 +74,8 @@ def TestAttackerOnModels(
     metrics_df = pd.DataFrame()
     os.makedirs(dir, exist_ok=True)
 
-    # ============================================================
-    # LOOP SUR CHAQUE ORACLE
-    # ============================================================
+    #csv of labels of not successful attacks by oracle 
+    not_successful_attacks_label_count = pd.DataFrame(0, index=classes, columns=oracle_files)
 
     for oracle_file in oracle_files:
 
@@ -85,99 +84,36 @@ def TestAttackerOnModels(
         model = torch.jit.load(oracle_file, map_location=device).to(device)
         model.eval()
 
-        # ========================================================
-        # CLEAN ACCURACY (sur les samples choisis)
-        # ========================================================
-
+        # =====================
+        # RANDOM SAMPLES
+        # =====================
         random.seed(20)
-        indices = random.sample(range(len(dataset)), sample_size)
+        sample_indices = random.sample(range(len(dataset)), min(sample_size, 15))
 
+        # =====================
+        # CLEAN ACCURACY
+        # =====================
         clean_correct = 0
-
-        for idx in indices:
+        for idx in sample_indices:
             image, label = dataset[idx]
             with torch.no_grad():
                 pred_clean = model(image.unsqueeze(0).to(device)).argmax(1).item()
             if pred_clean == label:
                 clean_correct += 1
+        clean_accuracy = clean_correct / len(sample_indices)
+        print(f"✅ Clean accuracy ({len(sample_indices)} samples): {clean_accuracy:.3f}")
 
-        clean_accuracy = clean_correct / sample_size
-        print(f"✅ Clean accuracy ({sample_size} samples): {clean_accuracy:.3f}")
-
-        # ========================================================
-        # OPTIONAL PLOT
-        # ========================================================
-
-        if plot_samples:
-
-            plt.figure(figsize=(15, 6))
-
-            for i, idx in enumerate(indices):
-
-                image, label = dataset[idx]
-                original_image = image.clone()
-
-
-                # ----------- ATTACK CHOISI
-                attacked_image = pgd_attack(
-                    model,
-                    image,
-                    label,
-                    epsilon=eps_plot,
-                    device=device
-                )
-
-                with torch.no_grad():
-                    pred_clean = model(image.unsqueeze(0).to(device)).argmax(1).item()
-                    pred_adv = model(attacked_image.unsqueeze(0).to(device)).argmax(1).item()
-
-                orig = original_image.squeeze().cpu() * 0.3081 + 0.1307
-                adv = attacked_image.squeeze().cpu() * 0.3081 + 0.1307
-
-                true_char = classes[label]
-                pred_char_clean = classes[pred_clean]
-                pred_char_adv = classes[pred_adv]
-
-                # ORIGINAL
-                plt.subplot(2, sample_size, i + 1)
-                plt.imshow(orig, cmap="gray")
-                plt.title(f"O\nL:{true_char}\nP:{pred_char_clean}")
-                plt.axis("off")
-
-                # ADVERSARIAL
-                plt.subplot(2, sample_size, i + 1 + sample_size)
-                plt.imshow(adv, cmap="gray")
-                plt.title(
-                    f"A\nP:{pred_char_adv}\n{'✔' if pred_adv != label else ''}"
-                )
-                plt.axis("off")
-
-            plt.suptitle(
-                f"{os.path.basename(oracle_file)}\n"
-                f"Clean Acc: {clean_accuracy:.2f} | PGD eps={eps_plot}"
-            )
-
-            fig_path = os.path.join(
-                dir,
-                f"{os.path.basename(oracle_file)}_{eps_plot}_{attacker_name}_samples.png"
-            )
-
-            plt.tight_layout()
-            plt.savefig(fig_path)
-            plt.close()
-
-            print(f"📸 Samples saved: {fig_path}")
-
-        # ========================================================
-        # ATTACK SUCCESS RATE
-        # ========================================================
-
-        for eps in [0.5, 1.0, 1.5]:
+        # =====================
+        # ATTACK SUCCESS RATE & PLOTS
+        # =====================
+        for eps in epsilons:
 
             success_count = 0
+            if plot_samples:
+                plt.figure(figsize=(12, 4))
+                plt.suptitle(f"{os.path.basename(oracle_file)} | Epsilon={eps}")
 
-            for idx in indices:
-
+            for i, idx in enumerate(sample_indices):
                 image, label = dataset[idx]
 
                 attacked_image = pgd_attack(
@@ -189,30 +125,59 @@ def TestAttackerOnModels(
                 )
 
                 with torch.no_grad():
+                    pred_clean = model(image.unsqueeze(0).to(device)).argmax(1).item()
                     pred_adv = model(attacked_image.unsqueeze(0).to(device)).argmax(1).item()
 
-                if pred_adv != label:
+                if pred_adv != pred_clean:
                     success_count += 1
+                else:
+                    not_successful_attacks_label_count.loc[classes[label], oracle_file] += 1
+                # --------------------
+                # PLOT
+                # --------------------
+                if plot_samples:
+                    orig_img = image.squeeze().cpu()
+                    adv_img = attacked_image.squeeze().cpu()
 
-            attack_success_rate = success_count / sample_size
+                    plt.subplot(2, len(sample_indices), i+1)
+                    plt.imshow(orig_img, cmap="gray")
+                    plt.title(f"C: {classes[label]}\nP: {classes[pred_clean]}")
+                    plt.axis("off")
+
+                    plt.subplot(2, len(sample_indices), i+1+len(sample_indices))
+                    plt.imshow(adv_img, cmap="gray")
+                    plt.title(f"P_adv: {classes[pred_adv]}\n{'X' if pred_adv!=pred_clean else ''}")
+                    plt.axis("off")
+
+            attack_success_rate = success_count / len(sample_indices)
 
             metrics_df = pd.concat([
                 metrics_df,
                 pd.DataFrame([{
                     "files_name": os.path.basename(oracle_file),
                     "attacker_name": attacker_name,
-                    "sample_size": sample_size,
+                    "sample_size": len(sample_indices),
                     "clean_accuracy": clean_accuracy,
                     "attack_success_rate": attack_success_rate,
                     "epsilon": eps
                 }])
             ], ignore_index=True)
 
+            # Sauvegarde plot
+            if plot_samples:
+                plot_path = os.path.join(dir, f"{os.path.basename(oracle_file)}_eps{eps}.png")
+                plt.tight_layout(rect=[0, 0, 1, 0.95])
+                plt.savefig(plot_path)
+                plt.close()
+                print(f"📌 Plot saved: {plot_path}")
+
+    # =====================
+    # SAVE CSV
+    # =====================
     csv_path = os.path.join(dir, f"{attacker_name}.csv")
     metrics_df.to_csv(csv_path, index=False)
-
+    not_successful_attacks_label_count.to_csv(os.path.join(dir, f"{attacker_name}_not_successful_attacks_label_count.csv")) 
     print(f"\n📊 Metrics saved: {csv_path}")
-
 
 # ============================================================
 # CLI ENTRY POINT
@@ -222,13 +187,13 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="PGD Attack Tester")
 
-    parser.add_argument("--samples", type=int, default=15,
+    parser.add_argument("--samples", type=int, default=500,
                         help="Number of samples per oracle")
 
     parser.add_argument("--plot", action="store_true",
                         help="Enable plotting of adversarial samples")
 
-    parser.add_argument("--eps_plot", type=float, default=1.0,
+    parser.add_argument("--eps_plot", type=float, default=0.3,
                         help="Epsilon used for plotting")
 
     parser.add_argument("--attacker_name", type=str,
