@@ -5,6 +5,7 @@ from torchvision import datasets, transforms
 import pandas as pd
 import os
 from classifier_S4_group_02 import ClassifierS4Group02
+import matplotlib.pyplot as plt
 
 class Oracle(nn.Module):
     def __init__(self, model):
@@ -86,7 +87,7 @@ def training(init_metrics, subject, metrics_file, oracle_file, dir):
         metrics_df = pd.DataFrame()
 
         # TRAIN LOOP
-        for epoch in range(1, config["epoch"] + 1):
+        for epoch in range(1, base_config["epoch"] + 1):
 
             model.train()
             train_loss, train_correct = 0, 0
@@ -126,12 +127,12 @@ def training(init_metrics, subject, metrics_file, oracle_file, dir):
             scheduler.step()
 
             row = {
-                "epoch": epoch,
                 "train_loss": train_loss,
                 "train_acc": train_acc,
                 "test_loss": test_loss,
                 "test_acc": test_acc,
-                **config
+                **config,
+                "epoch": epoch,
             }
 
             metrics_df = pd.concat([metrics_df, pd.DataFrame([row])], ignore_index=True)
@@ -152,7 +153,7 @@ def training(init_metrics, subject, metrics_file, oracle_file, dir):
     return all_metrics_files
 
 
-def compare_metrics(metrics_files):
+def rnaking_metrics(metrics_files):
     results = []
 
     for file in metrics_files:
@@ -184,6 +185,81 @@ def compare_metrics(metrics_files):
 
     return results_df
 
+ 
+
+
+
+def compare_metrics(metrics_files,
+                    subject="batch_size",
+                    performance_metric="test_acc",
+                    title="Comparison",
+                    save_path="comparison.png"):
+    """
+    Compare plusieurs fichiers CSV en regroupant par un hyperparamètre (subject).
+
+    Parameters
+    ----------
+    metrics_files : list[str]
+        Liste des CSV
+    subject : str
+        Hyperparamètre à comparer ("batch_size", "dropout", "learning_rate", etc.)
+    performance_metric : str
+        Metric à optimiser ("test_acc", "train_acc", "test_loss", etc.)
+    title : str
+        Titre du graphique
+    save_path : str
+        Nom du fichier image exporté
+
+    Returns
+    -------
+    pd.DataFrame trié du meilleur au pire
+    """
+
+    rows = []
+
+    for file in metrics_files:
+        df = pd.read_csv(file)
+
+        value = df[subject].iloc[0]
+
+        if "acc" in performance_metric:
+            best_perf = df[performance_metric].max()
+        else:
+            best_perf = df[performance_metric].min()
+
+        rows.append({
+            subject: value,
+            "best_performance": best_perf
+        })
+
+    results_df = pd.DataFrame(rows)
+
+    # Regrouper par hyperparamètre (au cas où plusieurs runs ont la même valeur)
+    if "acc" in performance_metric:
+        results_df = results_df.groupby(subject).max().reset_index()
+        results_df = results_df.sort_values("best_performance", ascending=False)
+    else:
+        results_df = results_df.groupby(subject).min().reset_index()
+        results_df = results_df.sort_values("best_performance", ascending=True)
+
+    # -------------------------
+    # GRAPH
+    # -------------------------
+    plt.figure(figsize=(8,6))
+    plt.plot(results_df[subject], results_df["best_performance"], marker="o")
+    plt.xlabel(subject)
+    plt.ylabel(performance_metric)
+    plt.title(title)
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(save_path)
+    plt.close()
+
+    print(f"📊 Graph saved to {save_path}")
+
+    return results_df
+
+
 if __name__ == "__main__":
     init_metrics = {
         "learning_rate": [1e-3],
@@ -202,6 +278,8 @@ if __name__ == "__main__":
 
     files = training(init_metrics, subject, metrics_file, oracle_file, dir)
     
-    ranking = compare_metrics(files)
+    ranking = rnaking_metrics(files)
+
+    compare_metrics(files, subject=subject, performance_metric="test_acc", title=f"Test Accuracy vs {subject}", save_path=os.path.join(dir, f"comparison_{subject}.png"))
 
     print(ranking)
