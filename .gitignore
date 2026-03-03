@@ -3,3 +3,6 @@
 .json
 __pycache__/
 data/
+
+attack_results/
+results/
