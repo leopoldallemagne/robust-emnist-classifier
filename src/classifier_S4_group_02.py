@@ -65,7 +65,7 @@ class ClassifierS4Group02(nn.Module):
             m = torch.jit.script(model)
             m.save("classifier_S4_group_XX.pt")
     """
-    def __init__(self):
+    def __init__(self, dropout=0.5):
         super().__init__()
 
         self.conv_stack = nn.Sequential(
