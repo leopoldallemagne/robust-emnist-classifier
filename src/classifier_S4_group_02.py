@@ -95,6 +95,12 @@ class ClassifierS4Group02(nn.Module):
         )
 
     def forward_logits(self, x):
+        original_dim = x.dim()
+        if original_dim == 2:
+            x = x.unsqueeze(0).unsqueeze(0)
+        elif original_dim == 3:
+            x = x.unsqueeze(1)
+    
         x = self.conv_stack(x)
         return self.classifier(x)
     
@@ -115,8 +121,11 @@ class ClassifierS4Group02(nn.Module):
 
         Contrainte: y doit satisfaire à la définition de probabilités.
         """
+        original_dim = x.dim()
 
         logits = self.forward_logits(x)
+        if original_dim == 2:
+            probs = probs.squeeze(0)
         return nn.functional.softmax(logits, dim=1)
 
 @torch.no_grad()
