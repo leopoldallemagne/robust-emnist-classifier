@@ -124,9 +124,10 @@ class ClassifierS4Group02(nn.Module):
         original_dim = x.dim()
 
         logits = self.forward_logits(x)
+        probs = nn.functional.softmax(logits, dim=1)
         if original_dim == 2:
             probs = probs.squeeze(0)
-        return nn.functional.softmax(logits, dim=1)
+        return probs
 
 @torch.no_grad()
 def init_weights(m):
