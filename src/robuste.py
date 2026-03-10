@@ -174,39 +174,39 @@ def adv_train_loop(dataloader, model, loss_fn, optimizer, eps):
 
     for batch, (X, y) in enumerate(dataloader):
         X, y = X.to(device), y.to(device)
+        
+        # --- 1. Calcul de la perte sur images PROPRES ---
+        pred_logits_clean = model.forward_logits(X)
+        loss_clean = loss_fn(pred_logits_clean, y)
 
-        # Activer les gradients sur les images
-        X.requires_grad = True
-
-        # Forward pass
+        # --- 2. Génération de l'attaque (Adversarial) ---
+        X.requires_grad = True # On active le gradient ici
         pred_logits = model.forward_logits(X)
-        loss = loss_fn(pred_logits, y)
+        loss_tmp = loss_fn(pred_logits, y)
+        
+        model.zero_grad()
+        loss_tmp.backward() # Remplit X.grad
 
-        # Backward pour obtenir le gradient par rapport aux pixels
-        loss.backward()
-
-        # Génération de la perturbation adversariale (FGSM)
+        
         grad = X.grad.data
         grad_norm = torch.norm(grad.view(grad.shape[0], -1), dim=1).view(-1,1,1,1)
-        grad = grad / (grad_norm + 1e-8)
+        delta = eps * (grad / (grad_norm + 1e-8))
+        X_adv = torch.clamp(X + delta, 0, 1).detach()
 
-        delta = eps * grad
-        X_adv = torch.clamp(X + delta, 0, 1)
 
-        # Reset gradients avant le vrai training
+        # --- 3. Calcul de la perte sur images ADVERSARIALES ---
         optimizer.zero_grad()
-
-        # Forward avec les images adversariales
         pred_logits_adv = model.forward_logits(X_adv)
-
         loss_adv = loss_fn(pred_logits_adv, y)
 
-        # Backprop finale
-        loss_adv.backward()
+        # --- 4. BACKPROP FINALE (Hybride) ---
+        # On combine les deux pertes
+        total_loss = (loss_clean + loss_adv) / 2
+        total_loss.backward()
         optimizer.step()
 
         if batch % 200 == 0:
-            print(f"loss: {loss_adv.item():>7f} [{batch * len(X):>5d}/{size:>5d}]")
+            print(f"loss: {total_loss.item():>7f} [{batch * len(X):>5d}/{size:>5d}]")
 
 # -------------------------
 # TEST LOOP
@@ -232,11 +232,46 @@ def test_loop(dataloader, model, loss_fn):
 
     print(f"Accuracy: {(100*correct):>0.1f}% | Avg loss: {test_loss:>8f}\n")
     return test_loss
+def adv_test_loop(dataloader, model, loss_fn, eps):
+    model.eval()
+    size = len(dataloader.dataset)
+    num_batches = len(dataloader)
+    adv_loss, adv_correct = 0, 0
 
+    for X, y in dataloader:
+        X, y = X.to(device), y.to(device)
+        X.requires_grad = True
+
+        outputs = model.forward_logits(X)
+        loss = loss_fn(outputs, y)
+        model.zero_grad()
+        loss.backward()
+
+        grad = X.grad.data
+        grad_norm = torch.norm(grad.view(grad.shape[0], -1), dim=1).view(-1,1,1,1)
+        delta = eps * (grad / (grad_norm + 1e-8))
+        X_adv = torch.clamp(X + delta, 0, 1)
+
+        with torch.no_grad():
+            pred_adv = model.forward_logits(X_adv)
+            adv_loss += loss_fn(pred_adv, y).item()
+            adv_correct += (pred_adv.argmax(1) == y).type(torch.float).sum().item()
+
+    adv_loss /= num_batches
+    adv_correct /= size
+
+    print(f"Adversarial Accuracy: {(100*adv_correct):>0.1f}% | Avg Adv loss: {adv_loss:>8f}")
+    return adv_loss
 if __name__ == "__main__":
+    epsilon_min = 0.0
+    epsilon_max = 0.8
     for t in range(epochs):
-        print(f"Epoch {t+1}\n-------------------------------")
-        adv_train_loop(train_dataloader, model, loss_fn, optimizer, 0.5)
+        current_eps = epsilon_min + (epsilon_max - epsilon_min) * (t / epochs)
+    
+        print(f"Epoch {t+1} - Epsilon: {current_eps:.3f}")
+        adv_train_loop(train_dataloader, model, loss_fn, optimizer, current_eps)
+        print("Adversarial Evaluation:")
+        adv_test_loop(test_dataloader, model, loss_fn, current_eps)
         val_loss =test_loop(test_dataloader, model, loss_fn)
         
         scheduler.step(val_loss)
