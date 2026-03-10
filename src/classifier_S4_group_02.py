@@ -3,51 +3,6 @@ from torch import nn
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 
-class FixEMNIST:
-    def __call__(self, img):
-        img = transforms.ToTensor()(img)
-        img = torch.flip(img, [2])            # flip horizontal
-        img = torch.rot90(img, 1, [1, 2])    # rotate 90° pour mettre debout
-        return img
-
-
-device = "cuda" if torch.cuda.is_available() else "cpu"
-print(f"Using {device} device")
-
-learning_rate = 1e-3
-batch_size = 32
-epochs = 30
-weight_decay = 1e-4
-dropout=0.5
-
-oracle_file="classifier_S4_group_02.pt"
-
-class FixEMNIST:
-    def __call__(self, img):
-        img = transforms.ToTensor()(img)
-        img = torch.flip(img, [2])            # flip horizontal
-        img = torch.rot90(img, 1, [1, 2])    # rotate 90° pour mettre debout
-        return img
-
-
-training_data = datasets.EMNIST(
-    root="data",
-    split="balanced",
-    train=True,
-    download=True,
-    transform=FixEMNIST()
-)
-
-test_data = datasets.EMNIST(
-    root="data",
-    split="balanced",
-    train=False,
-    download=True,
-    transform=FixEMNIST()
-)
-
-train_dataloader = DataLoader(training_data, batch_size=batch_size, shuffle=True)
-test_dataloader = DataLoader(test_data, batch_size=batch_size)
 
 # -------------------------
 # CNN MODEL
@@ -95,6 +50,12 @@ class ClassifierS4Group02(nn.Module):
         )
 
     def forward_logits(self, x):
+        original_dim = x.dim()
+        if original_dim == 2:
+            x = x.unsqueeze(0).unsqueeze(0)
+        elif original_dim == 3:
+            x = x.unsqueeze(1)
+    
         x = self.conv_stack(x)
         return self.classifier(x)
     
@@ -115,22 +76,14 @@ class ClassifierS4Group02(nn.Module):
 
         Contrainte: y doit satisfaire à la définition de probabilités.
         """
+        original_dim = x.dim()
 
         logits = self.forward_logits(x)
-        return nn.functional.softmax(logits, dim=1)
+        probs = nn.functional.softmax(logits, dim=1)
+        if original_dim == 2:
+            probs = probs.squeeze(0)
+        return probs
 
-@torch.no_grad()
-def init_weights(m):
-    if type(m) is nn.Linear:
-        nn.init.kaiming_uniform_(tensor=m.weight, mode='fan_in', nonlinearity='relu')
-
-model = ClassifierS4Group02().to(device)
-model.apply(init_weights)
-
-loss_fn = nn.CrossEntropyLoss()
-optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
-
-scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=3)
 
 # -------------------------
 # TRAIN LOOP
@@ -180,6 +133,59 @@ def test_loop(dataloader, model, loss_fn):
     return test_loss
 
 if __name__ == "__main__":
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"Using {device} device")
+
+    learning_rate = 1e-3
+    batch_size = 32
+    epochs = 30
+    weight_decay = 1e-4
+    dropout=0.5
+
+    oracle_file="classifier_S4_group_02.pt"
+
+    class FixEMNIST:
+        def __call__(self, img):
+            img = transforms.ToTensor()(img)
+            img = torch.flip(img, [2])            # flip horizontal
+            img = torch.rot90(img, 1, [1, 2])    # rotate 90° pour mettre debout
+            return img
+
+
+    training_data = datasets.EMNIST(
+        root="data",
+        split="balanced",
+        train=True,
+        download=True,
+        transform=FixEMNIST()
+    )
+
+    test_data = datasets.EMNIST(
+        root="data",
+        split="balanced",
+        train=False,
+        download=True,
+        transform=FixEMNIST()
+    )
+
+    train_dataloader = DataLoader(training_data, batch_size=batch_size, shuffle=True)
+    test_dataloader = DataLoader(test_data, batch_size=batch_size)
+
+
+    @torch.no_grad()
+    def init_weights(m):
+        if type(m) is nn.Linear:
+            nn.init.kaiming_uniform_(tensor=m.weight, mode='fan_in', nonlinearity='relu')
+
+    model = ClassifierS4Group02().to(device)
+    model.apply(init_weights)
+
+    loss_fn = nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=3)
+
     for t in range(epochs):
         print(f"Epoch {t+1}\n-------------------------------")
         train_loop(train_dataloader, model, loss_fn, optimizer)
