@@ -52,7 +52,6 @@ def pgd_attack(model, image, label, epsilon=0.2, alpha=0.01, iters=20, device="c
 # ============================================================
 # MAIN TEST FUNCTION
 # ============================================================
-
 def TestAttackerOnModels(
         oracle_files,
         sample_size=15,
@@ -110,6 +109,9 @@ def TestAttackerOnModels(
         # CLEAN ACCURACY
         # ========================================================
 
+        # =====================
+        # CLEAN ACCURACY
+        # =====================
         clean_correct = 0
 
         for idx in sample_indices:
@@ -121,6 +123,8 @@ def TestAttackerOnModels(
 
             if pred_clean == label:
                 clean_correct += 1
+        clean_accuracy = clean_correct / len(sample_indices)
+        print(f"✅ Clean accuracy ({len(sample_indices)} samples): {clean_accuracy:.3f}")
 
         clean_accuracy = clean_correct / len(sample_indices)
 
@@ -134,6 +138,9 @@ def TestAttackerOnModels(
         for eps in epsilons:
 
             success_count = 0
+            if plot_samples:
+                plt.figure(figsize=(12, 4))
+                plt.suptitle(f"{os.path.basename(oracle_file)} | Epsilon={eps}")
 
             if plot_samples:
                 plt.figure(figsize=(12,4))
@@ -234,7 +241,6 @@ def TestAttackerOnModels(
     )
 
     print(f"\n📊 Metrics saved: {csv_path}")
-
 
 # ============================================================
 # CLI ENTRY POINT
