@@ -1,93 +1,55 @@
 # LEPL1507_Groupe_2
 
 
+## Structure du projet
 
-## Getting started
+Le dossier `src/` contient les fichiers principaux du projet :
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+### `classifier_S4_group_02.py`
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+Ce fichier contient le modèle de classification principal utilisé par le projet.
 
-## Add your files
+- Définit la classe `ClassifierS4Group02` basée sur un réseau convolutif simple.
+- Utilise deux blocs convolutionnels avec batch normalization, ReLU et max pooling.
+- Ajoute une partie fully connected avec des couches linéaires, ReLU et dropout.
+- Fourni une méthode `forward` qui retourne des probabilités normalisées par softmax.
+- Fourni une méthode `forward_logits` pour l'entraînement avec `CrossEntropyLoss`.
+- Le script principal charge le dataset `EMNIST`, entraînement le modèle, affiche la progression, et sauvegarde un modèle scripté en `classifier_S4_group_02.pt`.
 
-* [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-* [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+### `TrainingWithMetrics.py`
 
-```
-cd existing_repo
-git remote add origin https://forge.uclouvain.be/GanzaNtigura/lepl1507_groupe_2.git
-git branch -M main
-git push -uf origin main
-```
+Ce fichier permet d'exécuter des sessions d'entraînement sur des métriques.
 
-## Integrate with your tools
+- Définit `training(init_metrics, subject, metrics_file, oracle_file, dir)` pour lancer des expériences modulaires.
+- Charge soit le dataset EMNIST pur, soit un dataset mixte comprenant des exemples adversariaux si `dataset_file` n'est pas `EMNIST`.
+- Entraîne `ClassifierS4Group02` et sauvegarde à la fois les métriques d'entraînement/test et les oracles PyTorch (`.pt`).
+- Produit des fichiers CSV de métriques et des fichiers `.pt` scripts qui peuvent être utilisés comme oracles.
 
-* [Set up project integrations](https://forge.uclouvain.be/GanzaNtigura/lepl1507_groupe_2/-/settings/integrations)
+### `TrainingWithSchedulers.py`
 
-## Collaborate with your team
+Ce fichier effectue des expériences axées sur le réglage du scheduler et du taux d'apprentissage.
 
-* [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-* [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-* [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-* [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-* [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+- Définit `run_experiment(config, save_path)` pour lancer un'entraînement unique selon une configuration.
+- Teste différents learning rates et différents schedulers (`None`, `StepLR`, `Plateau`).
+- Sauvegarde les métriques par expérience dans `results/*.csv`.
+- Permet de comparer l'impact des hyperparamètres et du scheduler sur l'accuracy de test.
 
-## Test and Deploy
+### `src/graphs_plot/`
 
-Use the built-in continuous integration in GitLab.
+Le dossier `src/graphs_plot/`, fichiers pour générer des graphes
 
-* [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/)
-* [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-* [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-* [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-* [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+- `MetricsGraph.py`
+  - Charge un fichier CSV de métriques d'entraînement et trace les courbes de loss et d'accuracy pour chaque epoch.
+  - Affiche aussi les hyperparamètres (`learning_rate`, `batch_size`, `weight_decay`, `dropout`) dans la légende.
 
-***
 
-# Editing this README
+- `scheduler_graph.py`
+  - Parcourt tous les CSV dans `results/` et compare les courbes `test_acc` par epoch pour différents schedulers.
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
 
-## Suggestions for a good README
+- `batch_size_accuracy.py`
+  - Trace la précision (`test_acc`) et le temps total en fonction de la taille de batch.
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
 
-## Name
-Choose a self-explaining name for your project.
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
-
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
-
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
-
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
-
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
-
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
-
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
-
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
