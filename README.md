@@ -25,7 +25,7 @@ Ce fichier permet d'exécuter des sessions d'entraînement sur des métriques.
 - Entraîne `ClassifierS4Group02` et sauvegarde à la fois les métriques d'entraînement/test et les oracles PyTorch (`.pt`).
 - Produit des fichiers CSV de métriques et des fichiers `.pt` scripts qui peuvent être utilisés comme oracles.
 
-### `TrainingWiithSchedulers.py`
+### `TrainingWithSchedulers.py`
 
 Ce fichier effectue des expériences axées sur le réglage du scheduler et du taux d'apprentissage.
 

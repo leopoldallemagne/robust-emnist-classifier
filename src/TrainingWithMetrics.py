@@ -164,7 +164,7 @@ def training(init_metrics, subject, metrics_file, oracle_file, dir):
         model = ClassifierS4Group02(dropout=config["dropout"]).to(device)
         loss_fn = nn.CrossEntropyLoss()
         optimizer = torch.optim.Adam(model.parameters(), lr=config["learning_rate"], weight_decay=config["weight_decay"])
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.5)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, threshold=0.01, factor=0.5, patience=2)
 
         metrics_df = pd.DataFrame()
         total_time = 0
@@ -207,7 +207,7 @@ def training(init_metrics, subject, metrics_file, oracle_file, dir):
             test_loss /= size
             test_acc = test_correct / size
 
-            scheduler.step()
+            scheduler.step(test_loss)
 
             # TIME
             epoch_time = time.time() - epoch_start
