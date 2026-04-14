@@ -22,6 +22,6 @@ Ce fichier permet d'entraîner le modèle et d'évaluer ses performances.
 
 ---
 
-## 🛠️ Utilisation
+
 
 
