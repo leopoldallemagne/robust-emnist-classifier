@@ -3,7 +3,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 import torch.nn.functional as F
-import math
+import numpy
 class FixEMNIST:
     def __call__(self, img):
         img = transforms.ToTensor()(img)
@@ -11,15 +11,15 @@ class FixEMNIST:
         img = torch.rot90(img, 1, [1, 2])    # rotate 90° pour mettre debout
         return img
 
-
+# Utilisation GPU si possible 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using {device} device")
-
+# Hyperparametres 
 learning_rate = 1e-3
 batch_size = 64
 epochs = 25
 weight_decay = 1e-4
-dropout=0.3
+dropout=0.5
 
 oracle_file="classifier_plus_robuste.pt"
 
@@ -53,7 +53,7 @@ test_dataloader = DataLoader(test_data, batch_size=batch_size)
 # -------------------------
 # CNN MODEL
 # -------------------------
-class ClassifierS4Group02(nn.Module):
+class ClassifierS11Group02(nn.Module):
     """
     Modèle de classification d'images.
 
@@ -152,18 +152,15 @@ def init_weights(m):
     if type(m) is nn.Linear:
         nn.init.kaiming_uniform_(tensor=m.weight, mode='fan_in', nonlinearity='relu')
 
-model = ClassifierS4Group02().to(device)
+model = ClassifierS11Group02().to(device)
 model.apply(init_weights)
 
 loss_fn = nn.CrossEntropyLoss(label_smoothing=0.1)
 optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
 
-scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=3)
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=1,threshold = 0.01)
 
-# -------------------------
 # TRAIN LOOP
-# -------------------------
-
 def train_loop(dataloader, model, loss_fn, optimizer):
     model.train()
     size = len(dataloader.dataset)
@@ -182,10 +179,7 @@ def train_loop(dataloader, model, loss_fn, optimizer):
         if batch % 200 == 0:
             print(f"loss: {loss.item():>7f} [{batch * len(X):>5d}/{size:>5d}]")
 
-# -------------------------
-# ADV TRAIN LOOP
-# -------------------------
-
+# Entrainement adversarial 
 def adv_train_loop(dataloader, model, loss_fn, optimizer, eps, beta=1.0):
     model.train()
     size = len(dataloader.dataset)
@@ -193,17 +187,17 @@ def adv_train_loop(dataloader, model, loss_fn, optimizer, eps, beta=1.0):
     for batch, (X, y) in enumerate(dataloader):
         X, y = X.to(device), y.to(device)
 
-        # --- 1. Calcul de la perte sur images PROPRES ---
+        # Calcul LOSS sur images PROPRES 
         pred_logits_clean = model.forward_logits(X)
         loss_clean = loss_fn(pred_logits_clean, y)
 
-        # --- 2. Génération de l'attaque (Adversarial) ---
-        X.requires_grad = True # On active le gradient ici
+        # Génération de l'attaque 
+        X.requires_grad = True 
         pred_logits = model.forward_logits(X)
         loss_tmp = loss_fn(pred_logits, y)
 
         model.zero_grad()
-        loss_tmp.backward() # Remplit X.grad
+        loss_tmp.backward() 
 
 
         grad = X.grad.data
@@ -212,25 +206,22 @@ def adv_train_loop(dataloader, model, loss_fn, optimizer, eps, beta=1.0):
         X_adv = torch.clamp(X + delta, 0, 1).detach()
 
         optimizer.zero_grad()
-        # On recalcule les deux pour avoir les graphes de gradient propres
         logits_clean = model.forward_logits(X)
         logits_adv = model.forward_logits(X_adv)
 
-        # --- 3. Logique TRADES ---
-        # A. Perte de classification (Précision naturelle)
+        #  Natural LOSS
         loss_natural = loss_fn(logits_clean, y)
 
-        # B. Perte de robustesse (Divergence KL)
-        # On veut que la prédiction adverse ressemble à la prédiction propre
-        # F.kl_div attend (log_prob_adverse, prob_propre)
+        # Divergence KL
+
         loss_robust = F.kl_div(
             F.log_softmax(logits_adv, dim=1),
-            F.softmax(logits_clean.detach(), dim=1), # .detach() car on ne veut pas propager ici
+            F.softmax(logits_clean.detach(), dim=1), 
             reduction='batchmean'
         )
 
-        # --- 4. BACKPROP FINALE ---
-        # Formule : Perte_Nat + Beta * Perte_KL
+
+        # LOSS tot =   LOSS_Nat + Beta * LOSS_KL
         total_loss = loss_natural + beta * loss_robust
 
         total_loss.backward()
@@ -238,10 +229,7 @@ def adv_train_loop(dataloader, model, loss_fn, optimizer, eps, beta=1.0):
 
         if batch % 200 == 0:
             print(f"loss: {total_loss.item():>7f} [Nat: {loss_natural.item():.3f} | KL: {loss_robust.item():.3f}]")
-# -------------------------
 # TEST LOOP
-# -------------------------
-
 def test_loop(dataloader, model, loss_fn):
     model.eval()
     size = len(dataloader.dataset)
@@ -262,6 +250,7 @@ def test_loop(dataloader, model, loss_fn):
 
     print(f"Accuracy: {(100*correct):>0.1f}% | Avg loss: {test_loss:>8f}\n")
     return test_loss
+# Test adversarial pour la robustesse 
 def adv_test_loop(dataloader, model, loss_fn, eps):
     model.eval()
     size = len(dataloader.dataset)
@@ -293,19 +282,18 @@ def adv_test_loop(dataloader, model, loss_fn, eps):
     print(f"Adversarial Accuracy: {(100*adv_correct):>0.1f}% | Avg Adv loss: {adv_loss:>8f}")
     return adv_loss
 if __name__ == "__main__":
-    epsilon_min = 0.0
-    epsilon_max = 0.5
+    eps_min = 0.0
+    eps_max = 0.5
     for t in range(epochs):
-        phase = (t / epochs) * (math.pi / 2)
-        current_eps = epsilon_min + (epsilon_max - epsilon_min) * math.sin(phase)
+        phase = (t / epochs) * (numpy.pi / 2)
+        current_eps = eps_min + (eps_max - eps_min) * numpy.sin(phase)
 
         print(f"--- Epoch {t+1}/{epochs} | Epsilon actuel: {current_eps:.4f} ---")
 
-        # 2. Entraînement avec l'epsilon calculé
-        # Note: on passe current_eps à la place de la valeur fixe 0.5
+        # Entraînement avec attaque
         adv_train_loop(train_dataloader, model, loss_fn, optimizer, current_eps)
 
-        # 3. Évaluation
+        # Éval
         print("Adversarial Evaluation:")
         adv_test_loop(test_dataloader, model, loss_fn, current_eps)
 
@@ -316,9 +304,9 @@ if __name__ == "__main__":
     print("ÉVALUATION FINALE DÉTAILLÉE")
     print("="*30)
 
-    epsilons_to_test = [0.1, 0.2, 0.3, 0.4, 0.5]
+    eps_scheduler = [0.1, 0.2, 0.3, 0.4, 0.5]
 
-    for e in epsilons_to_test:
+    for e in eps_scheduler:
         print(f"\nTest pour Epsilon = {e}:")
         adv_test_loop(test_dataloader, model, loss_fn, e)
 
@@ -326,5 +314,5 @@ if __name__ == "__main__":
     print("Done!")
 
     m = torch.jit.script(model)
-    m.save("classifier_S4_group_02.pt")
+    m.save("classifier_S11_group_02.pt")
     print(f"Fichier Oracle généré : {oracle_file}")
