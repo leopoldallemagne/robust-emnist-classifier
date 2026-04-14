@@ -16,6 +16,17 @@ Ce fichier contient le modèle de classification principal utilisé par le proje
 - Fourni une méthode `forward_logits` pour l'entraînement avec `CrossEntropyLoss`.
 - Le script principal charge le dataset `EMNIST`, entraînement le modèle, affiche la progression, et sauvegarde un modèle scripté en `classifier_S4_group_02.pt`.
 
+### `classifier_MLP.py`
+
+Ce fichier contient notre classifieur perceptron multicouche (MLP).
+
+- Définit la classe `ClassifierS4Group02` sous forme de réseau fully connected.
+- Aplati les images EMNIST (28x28) en vecteurs de taille 784 avant traitement.
+- Utilise trois couches linéaires (784->512->512->47), avec batch normalization, ReLU et dropout (p=0.1) sur les couches cachées.
+- Fournit une méthode `forward` qui gère automatiquement plusieurs formats d'entrée ((28,28), (B,28,28), (B,1,28,28)) et retourne des probabilités via softmax.
+- Le script principal entraîne le modèle sur EMNIST balanced avec Adam, NLLLoss (appliquée sur log-probabilités), et un scheduler StepLR.
+- Évalue le modèle sur l'ensemble de validation à chaque époque, sauvegarde le meilleur checkpoint, puis exporte un modèle TorchScript en `classifier_S4_group_02_MLP_512_512.pt`.
+
 ### `TrainingWithMetrics.py`
 
 Ce fichier permet d'exécuter des sessions d'entraînement sur des métriques.
