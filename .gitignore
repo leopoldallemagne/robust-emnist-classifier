@@ -1,8 +1,0 @@
-.DS_Store
-.vscode/
-.json
-__pycache__/
-data/
-
-attack_results/
-results/
