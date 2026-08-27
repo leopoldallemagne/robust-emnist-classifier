@@ -3,7 +3,7 @@
 
 ## Structure du projet
 
-Le dossier `src/` contient les fichiers principaux du projet :
+Notre contient les fichiers principaux du projet :
 
 ### `classifier_S4_group_02.py`
 
@@ -45,9 +45,9 @@ Ce fichier effectue des expériences axées sur le réglage du scheduler et du t
 - Sauvegarde les métriques par expérience dans `results/*.csv`.
 - Permet de comparer l'impact des hyperparamètres et du scheduler sur l'accuracy de test.
 
-### `src/graphs_plot/`
+### `graphs_plot/`
 
-Le dossier `src/graphs_plot/`, fichiers pour générer des graphes
+Le dossier `graphs_plot/`, fichiers pour générer des graphes
 
 - `MetricsGraph.py`
   - Charge un fichier CSV de métriques d'entraînement et trace les courbes de loss et d'accuracy pour chaque epoch.

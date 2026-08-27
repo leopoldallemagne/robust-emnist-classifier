@@ -1,7 +1,6 @@
 # Ce code a été généré, avant correction, par le prompt suivant dans une IA:
 # "Crée un graphe avec une échelle log en x qui représente l'accuracy en fonction de la batch size"
 # Avant de modifier nous-même le titre, les axes, etc..
-import os
 import pandas as pd
 import matplotlib.pyplot as plt
 
